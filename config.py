@@ -10,11 +10,18 @@ load_dotenv()
 
 # ─── Z.AI (Zhipu) Configuration ──────────────────────────────
 ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "")
+# Z.AI English platform uses api.z.ai; Chinese platform uses open.bigmodel.cn
+# Auto-detect: z.ai keys work on both, but api.z.ai is the official endpoint
+ZHIPU_BASE_URL = os.getenv("ZHIPU_BASE_URL", "https://api.z.ai/api/paas/v4")
 ZHIPU_MODELS = {
-    "free": "glm-4-flash",        # 100% free, no rate limits
-    "reasoning": "glm-4",          # Trial credits available
+    "flash": "glm-4-flash",          # Free on some accounts
+    "4.7": "glm-4.7",                # Latest generation
+    "4.5": "glm-4.5",                # Flagship model
+    "plus": "glm-4-plus",            # Premium
 }
-ZHIPU_DEFAULT_MODEL = "free"
+# Try models in order — first available one wins
+ZHIPU_MODEL_PRIORITY = ["glm-4-flash", "glm-4.7", "glm-4.5", "glm-4-plus", "glm-4"]
+ZHIPU_DEFAULT_MODEL = "flash"
 
 # ─── Satellite Configuration ─────────────────────────────────
 PLANETARY_COMPUTER_API = "https://planetarycomputer.microsoft.com/api/stac/v1"

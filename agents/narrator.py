@@ -16,7 +16,7 @@ except ImportError:
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import ZHIPU_API_KEY, ZHIPU_MODELS
+from config import ZHIPU_API_KEY, ZHIPU_MODEL_PRIORITY, ZHIPU_BASE_URL
 
 
 NARRATOR_SYSTEM = """You are EarthfiCopilot's Narrator Agent — a conversational AI interface for commodity intelligence.
@@ -75,7 +75,7 @@ def chat(user_message, sat_data=None, news_data=None, report_data=None, alert_da
         return _offline_response(user_message, sat_data, news_data)
 
     try:
-        client = ZhipuAI(api_key=key)
+        client = ZhipuAI(api_key=key, base_url=ZHIPU_BASE_URL)
         context = build_context(sat_data, news_data, report_data, alert_data)
 
         messages = [
@@ -87,13 +87,19 @@ def chat(user_message, sat_data=None, news_data=None, report_data=None, alert_da
                 messages.append(h)
         messages.append({"role": "user", "content": user_message})
 
-        resp = client.chat.completions.create(
-            model=ZHIPU_MODELS["free"],
-            messages=messages,
-            temperature=0.6,
-            max_tokens=800,
-        )
-        return resp.choices[0].message.content
+        for model_id in ZHIPU_MODEL_PRIORITY:
+            try:
+                resp = client.chat.completions.create(
+                    model=model_id,
+                    messages=messages,
+                    temperature=0.6,
+                    max_tokens=800,
+                )
+                return resp.choices[0].message.content
+            except Exception:
+                continue
+
+        return _offline_response(user_message, sat_data, news_data)
 
     except Exception as e:
         return f"⚠️ Z.AI connection error: {str(e)}\n\nPlease check your API key in the `.env` file."

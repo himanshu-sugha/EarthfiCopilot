@@ -16,7 +16,7 @@ except ImportError:
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import ZHIPU_API_KEY, ZHIPU_MODELS
+from config import ZHIPU_API_KEY, ZHIPU_MODEL_PRIORITY, ZHIPU_BASE_URL
 
 
 ALERT_PROMPT = """You are EarthfiCopilot's Dispatcher Agent — an anomaly detection system.
@@ -42,53 +42,55 @@ def generate_alerts(sat_data, news_data):
 
     key = ZHIPU_API_KEY
     if key and key != "your_zhipu_api_key_here" and HAS_ZHIPU:
-        try:
-            client = ZhipuAI(api_key=key)
-            sat_summary = {
-                "region": sat_data.get("region"),
-                "commodity": sat_data.get("commodity"),
-                "ndvi_change_pct": sat_data.get("ndvi_change_percent"),
-                "vegetation_status": sat_data.get("vegetation_status"),
-            }
-            news_summary = {
-                "sentiment": news_data.get("overall_sentiment"),
-                "themes": news_data.get("key_themes"),
-                "price": news_data.get("commodity_price", {}).get("price"),
-                "price_change_1m": news_data.get("commodity_price", {}).get("change_1m"),
-            }
+        client = ZhipuAI(api_key=key, base_url=ZHIPU_BASE_URL)
+        sat_summary = {
+            "region": sat_data.get("region"),
+            "commodity": sat_data.get("commodity"),
+            "ndvi_change_pct": sat_data.get("ndvi_change_percent"),
+            "vegetation_status": sat_data.get("vegetation_status"),
+        }
+        news_summary = {
+            "sentiment": news_data.get("overall_sentiment"),
+            "themes": news_data.get("key_themes"),
+            "price": news_data.get("commodity_price", {}).get("price"),
+            "price_change_1m": news_data.get("commodity_price", {}).get("change_1m"),
+        }
 
-            prompt = f"""Satellite data: {json.dumps(sat_summary)}
+        prompt = f"""Satellite data: {json.dumps(sat_summary)}
 News data: {json.dumps(news_summary)}
 
 Generate alerts based on this data."""
 
-            resp = client.chat.completions.create(
-                model=ZHIPU_MODELS["free"],
-                messages=[
-                    {"role": "system", "content": ALERT_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.3,
-                max_tokens=800,
-            )
+        for model_id in ZHIPU_MODEL_PRIORITY:
+            try:
+                print(f"  [Dispatcher] Trying Z.AI model: {model_id}...")
+                resp = client.chat.completions.create(
+                    model=model_id,
+                    messages=[
+                        {"role": "system", "content": ALERT_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.3,
+                    max_tokens=800,
+                )
 
-            text = resp.choices[0].message.content.strip()
-            # Extract JSON from response
-            if text.startswith("```"):
-                text = text.split("```")[1]
-                if text.startswith("json"):
-                    text = text[4:]
-            alerts = json.loads(text)
-            print(f"  ✅ Generated {len(alerts)} alerts via Z.AI")
-            return {
-                "agent": "The Dispatcher (Z.AI Alert System)",
-                "generated_at": datetime.now().isoformat(),
-                "data_mode": "LIVE_AI",
-                "alerts": alerts,
-                "tokens": resp.usage.total_tokens,
-            }
-        except Exception as e:
-            print(f"  ⚠️ Z.AI alert generation failed: {e}")
+                text = resp.choices[0].message.content.strip()
+                if text.startswith("```"):
+                    text = text.split("```")[1]
+                    if text.startswith("json"):
+                        text = text[4:]
+                alerts = json.loads(text)
+                print(f"  ✅ Generated {len(alerts)} alerts via Z.AI {model_id}")
+                return {
+                    "agent": f"The Dispatcher (Z.AI {model_id})",
+                    "generated_at": datetime.now().isoformat(),
+                    "data_mode": "LIVE_AI",
+                    "alerts": alerts,
+                    "tokens": resp.usage.total_tokens,
+                }
+            except Exception as e:
+                print(f"  ⚠️ {model_id} failed: {str(e)[:80]}")
+                continue
 
     # Fallback: rule-based alerts
     return _rule_based_alerts(sat_data, news_data)

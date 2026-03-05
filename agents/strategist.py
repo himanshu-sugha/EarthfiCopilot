@@ -16,7 +16,7 @@ except ImportError:
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import ZHIPU_API_KEY, ZHIPU_MODELS, ZHIPU_DEFAULT_MODEL
+from config import ZHIPU_API_KEY, ZHIPU_MODELS, ZHIPU_DEFAULT_MODEL, ZHIPU_BASE_URL
 
 
 SYSTEM_PROMPT = """You are EarthfiCopilot's Strategist Agent — an elite institutional-grade commodity trading analyst 
@@ -48,7 +48,7 @@ def _get_client():
     key = ZHIPU_API_KEY
     if not key or key == "your_zhipu_api_key_here":
         return None
-    return ZhipuAI(api_key=key)
+    return ZhipuAI(api_key=key, base_url=ZHIPU_BASE_URL)
 
 
 def _build_prompt(sat_data, news_data):
@@ -92,43 +92,47 @@ def generate_report(sat_data, news_data, model_tier=None):
     print(f"  🧠  AGENT 3: THE STRATEGIST — Financial Analysis")
     print(f"{'━'*60}")
 
-    model_tier = model_tier or ZHIPU_DEFAULT_MODEL
     client = _get_client()
 
-    if client is None or not HAS_ZHIPU:
+    if client is None:
         print("  ⚠️ Z.AI not configured — generating demo report")
         return _demo_report(sat_data, news_data)
 
-    model_id = ZHIPU_MODELS.get(model_tier, ZHIPU_MODELS["free"])
     prompt = _build_prompt(sat_data, news_data)
-    print(f"  [Strategist] Calling Z.AI model: {model_id}...")
 
-    try:
-        resp = client.chat.completions.create(
-            model=model_id,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
-            max_tokens=2500,
-            top_p=0.9,
-        )
-        text = resp.choices[0].message.content
-        usage = resp.usage
-        print(f"  ✅ Report generated! Tokens: {usage.total_tokens}")
+    # Try models in priority order
+    from config import ZHIPU_MODEL_PRIORITY
+    for model_id in ZHIPU_MODEL_PRIORITY:
+        print(f"  [Strategist] Trying Z.AI model: {model_id}...")
+        try:
+            resp = client.chat.completions.create(
+                model=model_id,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=2500,
+                top_p=0.9,
+            )
+            text = resp.choices[0].message.content
+            usage = resp.usage
+            print(f"  ✅ Report generated with {model_id}! Tokens: {usage.total_tokens}")
 
-        return {
-            "agent": "The Strategist (Z.AI GLM-4)",
-            "model": model_id,
-            "generated_at": datetime.now().isoformat(),
-            "tokens": {"prompt": usage.prompt_tokens, "completion": usage.completion_tokens, "total": usage.total_tokens},
-            "report": text,
-            "data_mode": "LIVE_AI",
-        }
-    except Exception as e:
-        print(f"  ⚠️ Z.AI call failed: {e}")
-        return _demo_report(sat_data, news_data)
+            return {
+                "agent": f"The Strategist (Z.AI {model_id})",
+                "model": model_id,
+                "generated_at": datetime.now().isoformat(),
+                "tokens": {"prompt": usage.prompt_tokens, "completion": usage.completion_tokens, "total": usage.total_tokens},
+                "report": text,
+                "data_mode": "LIVE_AI",
+            }
+        except Exception as e:
+            print(f"  ⚠️ {model_id} failed: {str(e)[:80]}")
+            continue
+
+    print("  ⚠️ All Z.AI models failed — using demo report")
+    return _demo_report(sat_data, news_data)
 
 
 def _demo_report(sat_data, news_data):
