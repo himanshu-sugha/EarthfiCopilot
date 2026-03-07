@@ -10,13 +10,13 @@ from datetime import datetime
 
 try:
     from zhipuai import ZhipuAI
-    HAS_ZHIPU = True
+    HAS_ZAI = True
 except ImportError:
-    HAS_ZHIPU = False
+    HAS_ZAI = False
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import ZHIPU_API_KEY, ZHIPU_MODELS, ZHIPU_DEFAULT_MODEL, ZHIPU_BASE_URL
+from config import ZAI_API_KEY, ZAI_MODELS, ZAI_DEFAULT_MODEL, ZAI_BASE_URL, ZAI_FALLBACK_URL, ZAI_FALLBACK_KEY
 
 
 SYSTEM_PROMPT = """You are EarthfiCopilot's Strategist Agent — an elite institutional-grade commodity trading analyst 
@@ -43,12 +43,12 @@ Use precise financial language. Cite specific numbers. Format in clean Markdown 
 
 def _get_client():
     """Initialize Z.AI client."""
-    if not HAS_ZHIPU:
+    if not HAS_ZAI:
         return None
-    key = ZHIPU_API_KEY
+    key = ZAI_API_KEY
     if not key or key == "your_zhipu_api_key_here":
         return None
-    return ZhipuAI(api_key=key, base_url=ZHIPU_BASE_URL)
+    return ZhipuAI(api_key=key, base_url=ZAI_BASE_URL)
 
 
 def _build_prompt(sat_data, news_data):
@@ -86,8 +86,25 @@ def _build_prompt(sat_data, news_data):
 Generate a complete institutional-grade trading report with specific numbers and clear recommendation."""
 
 
+def _try_generate(client, model_id, system_prompt, prompt, max_tokens=2500):
+    """Try to generate a completion with a specific client and model."""
+    resp = client.chat.completions.create(
+        model=model_id,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.7,
+        max_tokens=max_tokens,
+        top_p=0.9,
+    )
+    return resp
+
+
 def generate_report(sat_data, news_data, model_tier=None):
-    """Call Z.AI GLM-4 to generate the trading report."""
+    """Call Z.AI GLM to generate the trading report.
+    Tries api.z.ai first, falls back to open.bigmodel.cn with glm-4-flash.
+    """
     print(f"\n{'━'*60}")
     print(f"  🧠  AGENT 3: THE STRATEGIST — Financial Analysis")
     print(f"{'━'*60}")
@@ -100,21 +117,34 @@ def generate_report(sat_data, news_data, model_tier=None):
 
     prompt = _build_prompt(sat_data, news_data)
 
-    # Try models in priority order
-    from config import ZHIPU_MODEL_PRIORITY
-    for model_id in ZHIPU_MODEL_PRIORITY:
-        print(f"  [Strategist] Trying Z.AI model: {model_id}...")
+    # If fallback key is set, try open.bigmodel.cn FIRST (it's free and fast)
+    if ZAI_FALLBACK_KEY:
+        print("  [Strategist] Trying open.bigmodel.cn (glm-4-flash)...")
         try:
-            resp = client.chat.completions.create(
-                model=model_id,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=0.7,
-                max_tokens=2500,
-                top_p=0.9,
-            )
+            fast_client = ZhipuAI(api_key=ZAI_FALLBACK_KEY, base_url=ZAI_FALLBACK_URL)
+            resp = _try_generate(fast_client, "glm-4-flash", SYSTEM_PROMPT, prompt)
+            text = resp.choices[0].message.content
+            usage = resp.usage
+            print(f"  ✅ Report generated! Tokens: {usage.total_tokens}")
+
+            return {
+                "agent": "The Strategist (Z.AI glm-4-flash)",
+                "model": "glm-4-flash",
+                "endpoint": "open.bigmodel.cn",
+                "generated_at": datetime.now().isoformat(),
+                "tokens": {"prompt": usage.prompt_tokens, "completion": usage.completion_tokens, "total": usage.total_tokens},
+                "report": text,
+                "data_mode": "LIVE_AI",
+            }
+        except Exception as e:
+            print(f"  ⚠️ Fallback failed: {str(e)[:80]}")
+
+    # Try primary endpoint (api.z.ai) with all models
+    from config import ZAI_MODEL_PRIORITY
+    for model_id in ZAI_MODEL_PRIORITY:
+        print(f"  [Strategist] Trying api.z.ai: {model_id}...")
+        try:
+            resp = _try_generate(client, model_id, SYSTEM_PROMPT, prompt)
             text = resp.choices[0].message.content
             usage = resp.usage
             print(f"  ✅ Report generated with {model_id}! Tokens: {usage.total_tokens}")
@@ -122,6 +152,7 @@ def generate_report(sat_data, news_data, model_tier=None):
             return {
                 "agent": f"The Strategist (Z.AI {model_id})",
                 "model": model_id,
+                "endpoint": "api.z.ai",
                 "generated_at": datetime.now().isoformat(),
                 "tokens": {"prompt": usage.prompt_tokens, "completion": usage.completion_tokens, "total": usage.total_tokens},
                 "report": text,
@@ -131,7 +162,7 @@ def generate_report(sat_data, news_data, model_tier=None):
             print(f"  ⚠️ {model_id} failed: {str(e)[:80]}")
             continue
 
-    print("  ⚠️ All Z.AI models failed — using demo report")
+    print("  ⚠️ All Z.AI endpoints failed — using demo report")
     return _demo_report(sat_data, news_data)
 
 

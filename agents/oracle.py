@@ -161,7 +161,53 @@ def compute_sentiment(articles):
     return "NEUTRAL"
 
 
-def gather_intelligence(commodity="Arabica Coffee"):
+def fetch_weather(bbox):
+    """Fetch weather data from Open-Meteo API (free, no key needed).
+    Returns temperature, precipitation, and soil moisture for the region center.
+    """
+    if not HAS_REQUESTS:
+        return None
+    try:
+        lat = (bbox[1] + bbox[3]) / 2
+        lon = (bbox[0] + bbox[2]) / 2
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={lat}&longitude={lon}"
+            f"&current=temperature_2m,relative_humidity_2m,precipitation,soil_moisture_0_to_7cm"
+            f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum"
+            f"&past_days=7&forecast_days=7"
+            f"&timezone=auto"
+        )
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+
+        current = data.get("current", {})
+        daily = data.get("daily", {})
+
+        # Calculate 7-day precip totals (past and forecast)
+        precip_sums = daily.get("precipitation_sum", [])
+        past_7d_precip = sum(precip_sums[:7]) if len(precip_sums) >= 7 else 0
+        next_7d_precip = sum(precip_sums[7:]) if len(precip_sums) > 7 else 0
+
+        weather = {
+            "source": "Open-Meteo",
+            "location": f"{lat:.2f}°N, {lon:.2f}°E",
+            "current_temp_c": current.get("temperature_2m"),
+            "current_humidity": current.get("relative_humidity_2m"),
+            "current_precip_mm": current.get("precipitation"),
+            "soil_moisture": current.get("soil_moisture_0_to_7cm"),
+            "past_7d_precip_mm": round(past_7d_precip, 1),
+            "next_7d_precip_mm": round(next_7d_precip, 1),
+            "drought_risk": "HIGH" if past_7d_precip < 5 else "MODERATE" if past_7d_precip < 20 else "LOW",
+        }
+        print(f"  [Oracle] Weather: {weather['current_temp_c']}°C, precip(7d)={past_7d_precip:.0f}mm, drought={weather['drought_risk']}")
+        return weather
+    except Exception as e:
+        print(f"  [Oracle] Weather fetch failed: {e}")
+        return None
+
+
+def gather_intelligence(commodity="Arabica Coffee", bbox=None):
     """
     Main entry point for Agent 2.
     Returns structured intelligence report for The Strategist.
@@ -183,6 +229,9 @@ def gather_intelligence(commodity="Arabica Coffee"):
 
     price = fetch_commodity_price(commodity)
 
+    # Fetch weather data if bbox available
+    weather = fetch_weather(bbox) if bbox else None
+
     report = {
         "agent": "The Oracle (Market Intelligence)",
         "analysis_date": datetime.now().isoformat(),
@@ -193,6 +242,14 @@ def gather_intelligence(commodity="Arabica Coffee"):
         "key_themes": extract_themes(news_data),
         "overall_sentiment": compute_sentiment(news_data),
     }
+
+    if weather:
+        report["weather"] = weather
+        # Add weather themes
+        if weather.get("drought_risk") == "HIGH":
+            report["key_themes"].append("Drought Risk")
+        elif weather.get("next_7d_precip_mm", 0) > 50:
+            report["key_themes"].append("Heavy Rainfall Expected")
 
     print(f"  ✅ Intelligence complete! Sentiment: {report['overall_sentiment']}")
     return report

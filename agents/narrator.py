@@ -10,13 +10,13 @@ from datetime import datetime
 
 try:
     from zhipuai import ZhipuAI
-    HAS_ZHIPU = True
+    HAS_ZAI = True
 except ImportError:
-    HAS_ZHIPU = False
+    HAS_ZAI = False
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import ZHIPU_API_KEY, ZHIPU_MODEL_PRIORITY, ZHIPU_BASE_URL
+from config import ZAI_API_KEY, ZAI_MODEL_PRIORITY, ZAI_BASE_URL, ZAI_FALLBACK_URL, ZAI_FALLBACK_KEY
 
 
 NARRATOR_SYSTEM = """You are EarthfiCopilot's Narrator Agent — a conversational AI interface for commodity intelligence.
@@ -44,7 +44,19 @@ def build_context(sat_data, news_data, report_data, alert_data):
     sat_safe = {}
     for k, v in (sat_data or {}).items():
         if k not in ("recent_ndvi_array", "baseline_ndvi_array", "recent_rgb", "baseline_rgb"):
-            sat_safe[k] = v
+            import numpy as np
+            from PIL import Image
+            if isinstance(v, np.ndarray) or isinstance(v, Image.Image):
+                continue
+            if isinstance(v, dict):
+                nested = {}
+                for nk, nv in v.items():
+                    if isinstance(nv, np.ndarray):
+                        continue
+                    nested[nk] = nv
+                sat_safe[k] = nested
+            else:
+                sat_safe[k] = v
 
     context = f"""## Analysis Context
 
@@ -65,37 +77,53 @@ Price: {json.dumps((news_data or {}).get('commodity_price', {}), default=str)}
     return context
 
 
+def _try_chat(client, model_id, messages):
+    """Try a chat completion with a given client and model."""
+    resp = client.chat.completions.create(
+        model=model_id,
+        messages=messages,
+        temperature=0.6,
+        max_tokens=800,
+    )
+    return resp.choices[0].message.content
+
+
 def chat(user_message, sat_data=None, news_data=None, report_data=None, alert_data=None, history=None):
     """
-    Process a chat message using Z.AI GLM-4.
-    Returns the assistant's response.
+    Process a chat message using Z.AI GLM.
+    Tries api.z.ai first, falls back to open.bigmodel.cn.
     """
-    key = ZHIPU_API_KEY
-    if not key or key == "your_zhipu_api_key_here" or not HAS_ZHIPU:
+    key = ZAI_API_KEY
+    if not key or key == "your_zai_api_key_here" or not HAS_ZAI:
         return _offline_response(user_message, sat_data, news_data)
 
     try:
-        client = ZhipuAI(api_key=key, base_url=ZHIPU_BASE_URL)
-        context = build_context(sat_data, news_data, report_data, alert_data)
+        active_region = (sat_data or {}).get("region", "Unknown Region")
+        active_commodity = (sat_data or {}).get("commodity", "Unknown Commodity")
+        
+        system_msg = NARRATOR_SYSTEM + f"\n\nCURRENT DASHBOARD CONTEXT:\nThe user is currently looking at an analysis of {active_commodity} in {active_region}.\n\n" + context
 
         messages = [
-            {"role": "system", "content": NARRATOR_SYSTEM + "\n\n" + context},
+            {"role": "system", "content": system_msg},
         ]
-        # Add conversation history
         if history:
-            for h in history[-6:]:  # Keep last 6 messages for context
+            for h in history[-6:]:
                 messages.append(h)
         messages.append({"role": "user", "content": user_message})
 
-        for model_id in ZHIPU_MODEL_PRIORITY:
+        # Try fast endpoint first (open.bigmodel.cn)
+        if ZAI_FALLBACK_KEY:
             try:
-                resp = client.chat.completions.create(
-                    model=model_id,
-                    messages=messages,
-                    temperature=0.6,
-                    max_tokens=800,
-                )
-                return resp.choices[0].message.content
+                fast = ZhipuAI(api_key=ZAI_FALLBACK_KEY, base_url=ZAI_FALLBACK_URL)
+                return _try_chat(fast, "glm-4-flash", messages)
+            except Exception:
+                pass
+
+        # Try primary endpoint (api.z.ai)
+        client = ZhipuAI(api_key=key, base_url=ZAI_BASE_URL)
+        for model_id in ZAI_MODEL_PRIORITY:
+            try:
+                return _try_chat(client, model_id, messages)
             except Exception:
                 continue
 

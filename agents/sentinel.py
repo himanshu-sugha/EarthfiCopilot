@@ -99,6 +99,157 @@ def compute_ndvi(item):
     return ndvi_array, thumbnail, meta
 
 
+def compute_ndwi(item):
+    """Compute NDWI (Normalized Difference Water Index) for flood/water detection.
+    NDWI = (Green - NIR) / (Green + NIR) using B03 + B08.
+    NDWI > 0.3 = water, 0.1-0.3 = wet soil, < 0.1 = dry land.
+    """
+    try:
+        try:
+            import planetary_computer as pc
+            signed = pc.sign(item)
+        except ImportError:
+            signed = item
+
+        assets = signed.assets
+        green_asset = assets.get("B03", assets.get("green"))
+        nir_asset = assets.get("B08", assets.get("nir"))
+
+        with rasterio.open(green_asset.href) as ds:
+            green = ds.read(1, out_shape=(ds.height // 10, ds.width // 10)).astype(np.float32)
+        with rasterio.open(nir_asset.href) as ds:
+            nir = ds.read(1, out_shape=(ds.height // 10, ds.width // 10)).astype(np.float32)
+
+        denom = green + nir
+        ndwi = np.where(denom > 0, (green - nir) / denom, 0)
+
+        water_pct = float(np.sum(ndwi > 0.3) / ndwi.size * 100)
+        wet_pct = float(np.sum(ndwi > 0.1) / ndwi.size * 100)
+        print(f"  [Sentinel] NDWI computed — water={water_pct:.1f}%, wet={wet_pct:.1f}%")
+        return {
+            "ndwi_array": ndwi,
+            "ndwi_mean": round(float(np.nanmean(ndwi)), 4),
+            "water_percent": round(water_pct, 1),
+            "wet_soil_percent": round(wet_pct, 1),
+            "flood_risk": "HIGH" if water_pct > 15 else "MODERATE" if water_pct > 5 else "LOW",
+        }
+    except Exception as e:
+        print(f"  [Sentinel] NDWI failed: {e}")
+        return {"ndwi_mean": 0, "water_percent": 0, "wet_soil_percent": 0, "flood_risk": "UNKNOWN"}
+
+
+def compute_scl_quality(item):
+    """Assess image quality using Sentinel-2 Scene Classification Layer (SCL).
+    SCL classes: 0=no_data, 1=saturated, 2=shadow, 3=cloud_shadow,
+    4=vegetation, 5=bare_soil, 6=water, 7=cloud_low, 8=cloud_med, 9=cloud_high,
+    10=cirrus, 11=snow.
+    """
+    try:
+        try:
+            import planetary_computer as pc
+            signed = pc.sign(item)
+        except ImportError:
+            signed = item
+
+        assets = signed.assets
+        scl_asset = assets.get("SCL", assets.get("scl"))
+        if not scl_asset:
+            return {"quality_score": 100, "quality_note": "SCL band unavailable"}
+
+        with rasterio.open(scl_asset.href) as ds:
+            scl = ds.read(1, out_shape=(ds.height // 20, ds.width // 20))
+
+        total = scl.size
+        cloud = np.sum(np.isin(scl, [7, 8, 9, 10])) / total * 100
+        shadow = np.sum(np.isin(scl, [2, 3])) / total * 100
+        vegetation = np.sum(scl == 4) / total * 100
+        water = np.sum(scl == 6) / total * 100
+        bare_soil = np.sum(scl == 5) / total * 100
+        valid = 100 - cloud - shadow
+
+        result = {
+            "quality_score": round(valid, 1),
+            "cloud_percent": round(cloud, 1),
+            "shadow_percent": round(shadow, 1),
+            "vegetation_percent": round(vegetation, 1),
+            "water_percent": round(water, 1),
+            "bare_soil_percent": round(bare_soil, 1),
+        }
+        print(f"  [Sentinel] SCL quality: {valid:.0f}% valid (cloud={cloud:.1f}%, veg={vegetation:.0f}%)")
+        return result
+    except Exception as e:
+        print(f"  [Sentinel] SCL failed: {e}")
+        return {"quality_score": -1, "quality_note": str(e)}
+
+
+def compute_change_map(baseline_ndvi, recent_ndvi):
+    """Compute pixel-level vegetation change detection heatmap."""
+    try:
+        min_shape = (min(baseline_ndvi.shape[0], recent_ndvi.shape[0]),
+                     min(baseline_ndvi.shape[1], recent_ndvi.shape[1]))
+        b = baseline_ndvi[:min_shape[0], :min_shape[1]]
+        r = recent_ndvi[:min_shape[0], :min_shape[1]]
+        change = r - b
+        return {
+            "change_array": change,
+            "mean_change": round(float(np.nanmean(change)), 4),
+            "decline_area_pct": round(float(np.sum(change < -0.1) / change.size * 100), 1),
+            "growth_area_pct": round(float(np.sum(change > 0.1) / change.size * 100), 1),
+        }
+    except Exception as e:
+        print(f"  [Sentinel] Change map failed: {e}")
+        return {"mean_change": 0, "decline_area_pct": 0, "growth_area_pct": 0}
+
+
+def compute_msi(item):
+    """Compute MSI (Moisture Stress Index) for crop water stress detection.
+    MSI = SWIR (B11) / NIR (B08).
+    MSI > 1.0 = moisture stress, 0.4-1.0 = moderate, < 0.4 = healthy moisture.
+    Reference: Hunt & Rock (1989).
+    """
+    try:
+        try:
+            import planetary_computer as pc
+            signed = pc.sign(item)
+        except ImportError:
+            signed = item
+
+        assets = signed.assets
+        swir_asset = assets.get("B11", assets.get("swir16"))
+        nir_asset = assets.get("B08", assets.get("nir"))
+
+        # B11 is 20m native, B08 is 10m native — read both to common shape
+        common_shape = (256, 256)
+        with rasterio.open(swir_asset.href) as ds:
+            swir = ds.read(1, out_shape=common_shape).astype(np.float32)
+        with rasterio.open(nir_asset.href) as ds:
+            nir = ds.read(1, out_shape=common_shape).astype(np.float32)
+
+        msi = np.where(nir > 0, swir / nir, 0)
+
+        stress_pct = float(np.sum(msi > 1.0) / msi.size * 100)
+        healthy_pct = float(np.sum(msi < 0.4) / msi.size * 100)
+        msi_mean = float(np.nanmean(msi))
+
+        if msi_mean > 1.0:
+            stress_level = "HIGH"
+        elif msi_mean > 0.6:
+            stress_level = "MODERATE"
+        else:
+            stress_level = "LOW"
+
+        print(f"  [Sentinel] MSI computed — mean={msi_mean:.3f}, stress={stress_pct:.1f}%")
+        return {
+            "msi_mean": round(msi_mean, 4),
+            "moisture_stress_percent": round(stress_pct, 1),
+            "healthy_moisture_percent": round(healthy_pct, 1),
+            "stress_level": stress_level,
+        }
+    except Exception as e:
+        print(f"  [Sentinel] MSI failed: {e}")
+        return {"msi_mean": 0.7, "moisture_stress_percent": 0, "healthy_moisture_percent": 0, "stress_level": "UNKNOWN"}
+
+
 def _synthetic_ndvi(shape=(256, 256), health="declining"):
     """Generate synthetic NDVI for demo/fallback."""
     np.random.seed(42)
@@ -188,6 +339,18 @@ def analyze_region(region_name=None, bbox=None, months_back=3):
                 change = recent_mean - baseline_mean
                 change_pct = (change / max(baseline_mean, 0.01)) * 100
 
+                # Compute NDWI (flood detection)
+                ndwi_data = compute_ndwi(recent_items[0])
+
+                # Compute MSI (moisture stress)
+                msi_data = compute_msi(recent_items[0])
+
+                # Compute SCL quality
+                scl_data = compute_scl_quality(recent_items[0])
+
+                # Compute change detection heatmap
+                change_data = compute_change_map(baseline_ndvi, recent_ndvi)
+
                 results.update({
                     "data_mode": "LIVE_SATELLITE",
                     "baseline_scene": baseline_meta,
@@ -201,6 +364,14 @@ def analyze_region(region_name=None, bbox=None, months_back=3):
                     "baseline_ndvi_array": baseline_ndvi,
                     "recent_rgb": recent_rgb,
                     "baseline_rgb": baseline_rgb,
+                    # NDWI flood detection
+                    "ndwi": ndwi_data,
+                    # MSI moisture stress
+                    "msi": msi_data,
+                    # SCL quality assessment
+                    "scl_quality": scl_data,
+                    # Change detection
+                    "change_detection": change_data,
                 })
                 print(f"  ✅ Live satellite analysis complete!")
                 return results
@@ -232,6 +403,7 @@ def analyze_region(region_name=None, bbox=None, months_back=3):
         "baseline_ndvi_array": baseline_ndvi,
         "recent_rgb": recent_rgb,
         "baseline_rgb": baseline_rgb,
+        "msi": {"msi_mean": 0.72, "moisture_stress_percent": 18.5, "healthy_moisture_percent": 32.1, "stress_level": "MODERATE"},
     })
     print(f"  ✅ Synthetic analysis complete! NDVI: {baseline_mean:.3f} → {recent_mean:.3f} ({change_pct:+.1f}%)")
     return results
@@ -243,7 +415,16 @@ def get_serializable(results):
     for k, v in results.items():
         if isinstance(v, np.ndarray) or (Image and isinstance(v, Image.Image)):
             continue
-        safe[k] = v
+        elif isinstance(v, dict):
+            # Recursively clean nested dicts
+            nested = {}
+            for nk, nv in v.items():
+                if isinstance(nv, np.ndarray) or (Image and isinstance(nv, Image.Image)):
+                    continue
+                nested[nk] = nv
+            safe[k] = nested
+        else:
+            safe[k] = v
     return safe
 
 

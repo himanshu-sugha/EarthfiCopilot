@@ -10,13 +10,13 @@ from datetime import datetime
 
 try:
     from zhipuai import ZhipuAI
-    HAS_ZHIPU = True
+    HAS_ZAI = True
 except ImportError:
-    HAS_ZHIPU = False
+    HAS_ZAI = False
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from config import ZHIPU_API_KEY, ZHIPU_MODEL_PRIORITY, ZHIPU_BASE_URL
+from config import ZAI_API_KEY, ZAI_MODEL_PRIORITY, ZAI_BASE_URL, ZAI_FALLBACK_URL, ZAI_FALLBACK_KEY
 
 
 ALERT_PROMPT = """You are EarthfiCopilot's Dispatcher Agent — an anomaly detection system.
@@ -34,15 +34,34 @@ Return a JSON array of alerts. Each alert must have:
 Return ONLY the JSON array, no other text. Generate 2-5 alerts based on the data."""
 
 
+def _dispatch_call(client, model_id, prompt):
+    """Try a single dispatch call."""
+    resp = client.chat.completions.create(
+        model=model_id,
+        messages=[
+            {"role": "system", "content": ALERT_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.3,
+        max_tokens=800,
+    )
+    text = resp.choices[0].message.content.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+    alerts = json.loads(text)
+    return alerts, resp.usage.total_tokens, model_id
+
+
 def generate_alerts(sat_data, news_data):
     """Generate priority alerts from satellite + news data using Z.AI."""
     print(f"\n{'━'*60}")
     print(f"  🚨  AGENT 4: THE DISPATCHER — Anomaly Detection")
     print(f"{'━'*60}")
 
-    key = ZHIPU_API_KEY
-    if key and key != "your_zhipu_api_key_here" and HAS_ZHIPU:
-        client = ZhipuAI(api_key=key, base_url=ZHIPU_BASE_URL)
+    key = ZAI_API_KEY
+    if key and key != "your_zai_api_key_here" and HAS_ZAI:
         sat_summary = {
             "region": sat_data.get("region"),
             "commodity": sat_data.get("commodity"),
@@ -61,32 +80,36 @@ News data: {json.dumps(news_summary)}
 
 Generate alerts based on this data."""
 
-        for model_id in ZHIPU_MODEL_PRIORITY:
+        # Try fast endpoint first (open.bigmodel.cn) if fallback key is set
+        if ZAI_FALLBACK_KEY:
+            print("  [Dispatcher] Trying open.bigmodel.cn (glm-4-flash)...")
             try:
-                print(f"  [Dispatcher] Trying Z.AI model: {model_id}...")
-                resp = client.chat.completions.create(
-                    model=model_id,
-                    messages=[
-                        {"role": "system", "content": ALERT_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.3,
-                    max_tokens=800,
-                )
+                fast_client = ZhipuAI(api_key=ZAI_FALLBACK_KEY, base_url=ZAI_FALLBACK_URL)
+                alerts, tokens, model = _dispatch_call(fast_client, "glm-4-flash", prompt)
+                print(f"  ✅ Generated {len(alerts)} alerts via Z.AI!")
+                return {
+                    "agent": "The Dispatcher (Z.AI glm-4-flash)",
+                    "generated_at": datetime.now().isoformat(),
+                    "data_mode": "LIVE_AI",
+                    "alerts": alerts,
+                    "tokens": tokens,
+                }
+            except Exception as e:
+                print(f"  ⚠️ Fast endpoint failed: {str(e)[:80]}")
 
-                text = resp.choices[0].message.content.strip()
-                if text.startswith("```"):
-                    text = text.split("```")[1]
-                    if text.startswith("json"):
-                        text = text[4:]
-                alerts = json.loads(text)
+        # Try primary endpoint (api.z.ai)
+        client = ZhipuAI(api_key=key, base_url=ZAI_BASE_URL)
+        for model_id in ZAI_MODEL_PRIORITY:
+            try:
+                print(f"  [Dispatcher] Trying api.z.ai: {model_id}...")
+                alerts, tokens, model = _dispatch_call(client, model_id, prompt)
                 print(f"  ✅ Generated {len(alerts)} alerts via Z.AI {model_id}")
                 return {
                     "agent": f"The Dispatcher (Z.AI {model_id})",
                     "generated_at": datetime.now().isoformat(),
                     "data_mode": "LIVE_AI",
                     "alerts": alerts,
-                    "tokens": resp.usage.total_tokens,
+                    "tokens": tokens,
                 }
             except Exception as e:
                 print(f"  ⚠️ {model_id} failed: {str(e)[:80]}")

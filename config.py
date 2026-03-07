@@ -8,20 +8,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ─── Z.AI (Zhipu) Configuration ──────────────────────────────
-ZHIPU_API_KEY = os.getenv("ZHIPU_API_KEY", "")
-# Z.AI English platform uses api.z.ai; Chinese platform uses open.bigmodel.cn
-# Auto-detect: z.ai keys work on both, but api.z.ai is the official endpoint
-ZHIPU_BASE_URL = os.getenv("ZHIPU_BASE_URL", "https://api.z.ai/api/paas/v4")
-ZHIPU_MODELS = {
-    "flash": "glm-4-flash",          # Free on some accounts
-    "4.7": "glm-4.7",                # Latest generation
-    "4.5": "glm-4.5",                # Flagship model
-    "plus": "glm-4-plus",            # Premium
+# ─── Z.AI Configuration ─────────────────────────────────────
+ZAI_API_KEY = os.getenv("ZAI_API_KEY", os.getenv("ZHIPU_API_KEY", ""))
+# Primary: api.z.ai (English platform, paid models)
+# Fallback: open.bigmodel.cn (Chinese platform, glm-4-flash is FREE)
+ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4")
+ZAI_FALLBACK_URL = "https://open.bigmodel.cn/api/paas/v4"
+ZAI_FALLBACK_KEY = os.getenv("ZAI_FALLBACK_KEY", os.getenv("ZHIPU_FALLBACK_KEY", ""))
+ZAI_MODELS = {
+    "flash": "glm-4-flash",          # Free on open.bigmodel.cn
+    "4.7": "glm-4.7",                # Latest generation (paid)
+    "4.5": "glm-4.5",                # Flagship model (paid)
+    "plus": "glm-4-plus",            # Premium (paid)
 }
 # Try models in order — first available one wins
-ZHIPU_MODEL_PRIORITY = ["glm-4-flash", "glm-4.7", "glm-4.5", "glm-4-plus", "glm-4"]
-ZHIPU_DEFAULT_MODEL = "flash"
+ZAI_MODEL_PRIORITY = ["glm-4-flash", "glm-4.7", "glm-4.5", "glm-4-plus", "glm-4"]
+ZAI_DEFAULT_MODEL = "flash"
 
 # ─── Satellite Configuration ─────────────────────────────────
 PLANETARY_COMPUTER_API = "https://planetarycomputer.microsoft.com/api/stac/v1"
@@ -62,7 +64,7 @@ DEFAULT_REGION = "Minas Gerais, Brazil (Coffee)"
 def get_news_feeds(commodity: str) -> dict:
     """Generate Google News RSS feeds tailored to the commodity."""
     base = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q="
-    commodity_lower = commodity.lower()
+    commodity_lower = commodity.lower().replace(" ", "+")
     return {
         f"{commodity} Agriculture": f"{base}{commodity_lower}+agriculture+drought+crop",
         f"{commodity} Markets": f"{base}{commodity_lower}+futures+commodity+price+market",
