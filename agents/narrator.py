@@ -101,6 +101,7 @@ def chat(user_message, sat_data=None, news_data=None, report_data=None, alert_da
         active_region = (sat_data or {}).get("region", "Unknown Region")
         active_commodity = (sat_data or {}).get("commodity", "Unknown Commodity")
         
+        context = build_context(sat_data, news_data, report_data, alert_data)
         system_msg = NARRATOR_SYSTEM + f"\n\nCURRENT DASHBOARD CONTEXT:\nThe user is currently looking at an analysis of {active_commodity} in {active_region}.\n\n" + context
 
         messages = [
