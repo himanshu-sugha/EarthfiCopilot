@@ -1,6 +1,6 @@
 # EarthfiCopilot - Multi-Agent Commodity Intelligence from Space
 
-> **AI Agent that transforms Sentinel-2 satellite imagery into actionable commodity market intelligence - with ML-powered yield forecasting, 5 spectral indices, and revenue-at-risk quantification.**
+> **AI Agent that transforms Sentinel-2 satellite imagery into actionable commodity market intelligence using Z.AI GLM-4 and The Compression Company (TCC) Starter Kit - with ML-powered yield forecasting, 5 spectral indices, and revenue-at-risk quantification.**
 
 
 
