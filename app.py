@@ -283,13 +283,14 @@ if not st.session_state.analysis_run:
     """, language=None)
 
 else:
-    sat = st.session_state.sat_data
-    news = st.session_state.news_data
-    report = st.session_state.report_data
-    alerts = st.session_state.alert_data
+    with st.spinner("✨ Rendering your intelligence dashboard..."):
+        sat = st.session_state.sat_data
+        news = st.session_state.news_data
+        report = st.session_state.report_data
+        alerts = st.session_state.alert_data
 
-    # ─── Top Metrics Row ─────────────────────────
-    m1, m2, m3, m4, m5 = st.columns(5)
+        # ─── Top Metrics Row ─────────────────────────
+        m1, m2, m3, m4, m5 = st.columns(5)
 
     ndvi_change = sat.get("ndvi_change_percent", 0)
     with m1:
