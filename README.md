@@ -335,6 +335,9 @@ cp .env.example .env
 # Add your keys:
 #   ZAI_API_KEY=your_api_z_ai_key
 #   ZAI_FALLBACK_KEY=your_open_bigmodel_key  (get free at https://open.bigmodel.cn/)
+# 
+#   NOTE: For maximum speed, the codebase is designed to try the FALLBACK_KEY 
+#   (bigmodel) first! If it fails, it falls back to the primary API_KEY.
 
 # 4. Run dashboard
 streamlit run app.py
