@@ -4,7 +4,7 @@
 
 
 
-## What is EarthfiCopilot?
+## 1. What is EarthfiCopilot?
 
 EarthfiCopilot is an **autonomous multi-agent AI system** that:
 
@@ -18,22 +18,22 @@ EarthfiCopilot is an **autonomous multi-agent AI system** that:
 8. **Answers follow-up questions** via a conversational Z.AI chat interface
 
 ## Table of Contents
-1. [What is EarthfiCopilot?](#what-is-earthficopilot)
-2. [Features & Implementation](#features--implementation)
-3. [How It Works](#how-it-works)
-4. [5 AI Agents](#5-ai-agents)
-5. [Satellite Analysis](#satellite-analysis-capabilities)
-6. [ML-Powered Forecasting](#ml-powered-forecasting)
-7. [Z.AI Integration](#zai-integration-3-deep-usages)
-8. [TCC Starter Kit Integration](#tcc-starter-kit-integration)
-9. [Data Provenance](#data-provenance--evidence-trail)
-10. [Tech Stack](#tech-stack)
-11. [Quick Start](#quick-start)
-12. [Screenshots](#screenshots)
+1. [What is EarthfiCopilot?](#1-what-is-earthficopilot)
+2. [Features & Implementation](#2-features--implementation)
+3. [How It Works](#3-how-it-works)
+4. [5 AI Agents](#4-5-ai-agents)
+5. [Satellite Analysis](#5-satellite-analysis-capabilities)
+6. [ML-Powered Forecasting](#6-ml-powered-forecasting)
+7. [Z.AI Integration](#7-zai-integration-3-deep-usages)
+8. [TCC Starter Kit Integration](#8-tcc-starter-kit-integration)
+9. [Data Provenance](#9-data-provenance--evidence-trail)
+10. [Tech Stack](#10-tech-stack)
+11. [Quick Start](#11-quick-start)
+12. [Screenshots](#12-screenshots)
 
 ---
 
-## Features & Implementation
+## 2. Features & Implementation
 
 | Feature | How It Works | File |
 |---------|--------------|------|
@@ -60,7 +60,7 @@ EarthfiCopilot is an **autonomous multi-agent AI system** that:
 
 ---
 
-## How It Works
+## 3. How It Works
 
 ```
 User selects region → Click "Run Analysis"
@@ -103,7 +103,7 @@ User selects region → Click "Run Analysis"
 
 ---
 
-## 5 AI Agents
+## 4. 5 AI Agents
 
 | Agent | Name | Role | Data Source |
 |-------|------|------|-------------|
@@ -117,7 +117,7 @@ User selects region → Click "Run Analysis"
 
 ---
 
-## Satellite Analysis Capabilities
+## 5. Satellite Analysis Capabilities
 
 EarthfiCopilot performs **6 distinct satellite analyses** using Sentinel-2 L2A data:
 
@@ -138,7 +138,7 @@ EarthfiCopilot performs **6 distinct satellite analyses** using Sentinel-2 L2A d
 
 ---
 
-## ML-Powered Forecasting
+## 6. ML-Powered Forecasting
 
 EarthfiCopilot includes a **machine learning forecasting engine** built with scikit-learn:
 
@@ -171,7 +171,7 @@ The forecast chart shows:
 
 ---
 
-## Z.AI Integration (3 Deep Usages)
+## 7. Z.AI Integration (3 Deep Usages)
 
 EarthfiCopilot demonstrates **meaningful usage** of Z.AI's GLM series models across three distinct agent capabilities:
 
@@ -211,7 +211,7 @@ GLM-4 powers a chat interface where users ask follow-up questions. Full context 
 
 ---
 
-## TCC Starter Kit Integration
+## 8. TCC Starter Kit Integration
 
 This project uses **ALL tools from the TCC Sentinel-2 starter kit**:
 
@@ -228,7 +228,7 @@ This project uses **ALL tools from the TCC Sentinel-2 starter kit**:
 
 ---
 
-## Data Provenance & Evidence Trail
+## 9. Data Provenance & Evidence Trail
 
 EarthfiCopilot provides full **audit-grade transparency**:
 
@@ -275,7 +275,7 @@ EarthfiCopilot provides full **audit-grade transparency**:
 
 ---
 
-## Tech Stack
+## 10. Tech Stack
 
 | Category | Technology |
 |----------|------------|
@@ -320,7 +320,7 @@ earthfi-copilot/
 
 ---
 
-## Quick Start
+## 11. Quick Start
 
 ```bash
 # 1. Clone the repository
@@ -355,7 +355,7 @@ python main.py --list-regions                     # List all regions
 
 ---
 
-## Screenshots
+## 12. Screenshots
 
 
 ### Live Satellite Analysis - Sentinel-2 Imagery
