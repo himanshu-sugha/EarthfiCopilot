@@ -357,11 +357,11 @@ python main.py --list-regions                     # List all regions
 
 ## Screenshots
 
-### Market Intelligence Dashboard
-![Intelligence Tab](screenshots/intelligence_tab.png)
 
 ### Live Satellite Analysis - Sentinel-2 Imagery
 ![Satellite Tab](screenshots/satellite_analysis.png)
+### Market Intelligence Dashboard
+![Intelligence Tab](screenshots/intelligence_tab.png)
 
 ### Real Sentinel-2 RGB - Baseline vs Current
 ![RGB Comparison](screenshots/rgb_comparison.png)
